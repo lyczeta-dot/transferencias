@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control de Transferencias</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --page:#f2f4f7; --surface:#fff; --ink:#16202b; --muted:#5d6b7a;
+    --line:#dde3ea; --line-soft:#eef1f5;
+    --entra:#0c6b4a; --entra-bg:#e6f4ee;
+    --sale:#a52216;  --sale-bg:#fceceb;
+    --focus:#2f5bd0;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--page); color:var(--ink);
+    font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:20px 16px 64px}
+
+  header.top{display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px}
+  header.top h1{font-size:22px; font-weight:650; margin:0; letter-spacing:-.01em}
+  header.top p{margin:2px 0 0; color:var(--muted); font-size:13px}
+  .top-actions{display:flex; gap:8px; align-items:center}
+
+  button{font:inherit; cursor:pointer; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); padding:8px 13px}
+  button:hover{border-color:#c3ccd6}
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible{outline:2px solid var(--focus); outline-offset:1px}
+  .btn-primary{background:var(--ink); border-color:var(--ink); color:#fff}
+  .btn-primary:hover{background:#243447; border-color:#243447}
+  .btn-ghost{background:transparent}
+  .btn-danger{color:var(--sale); border-color:#e8c3bf}
+  .btn-sm{padding:5px 9px; font-size:13px}
+
+  /* Login */
+  #login{min-height:100vh; display:grid; place-items:center; padding:20px}
+  .login-card{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:26px; width:min(370px,100%); box-shadow:0 10px 30px rgba(20,32,45,.07)}
+  .login-card h1{font-size:19px; font-weight:650; margin:0 0 3px}
+  .login-card p{margin:0 0 18px; color:var(--muted); font-size:13px}
+  .login-card .campo{margin-bottom:11px}
+  .login-card input{width:100%}
+  .login-card button{width:100%; margin-top:6px}
+
+  /* Totales */
+  .totales{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden; margin-bottom:16px}
+  .tot{background:var(--surface); padding:13px 15px}
+  .tot .lbl{font-size:12px; color:var(--muted)}
+  .tot .val{font-size:21px; font-weight:650; margin-top:3px; font-variant-numeric:tabular-nums; letter-spacing:-.02em}
+  .tot .val.pos{color:var(--entra)} .tot .val.neg{color:var(--sale)}
+  .tot .sub{font-size:12px; color:var(--muted); margin-top:2px}
+
+  /* Filtros */
+  .filtros{display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:14px}
+  .campo{display:flex; flex-direction:column; gap:4px}
+  .campo label{font-size:12px; color:var(--muted)}
+  input,select,textarea{font:inherit; color:var(--ink); background:var(--surface); border:1px solid var(--line); border-radius:7px; padding:7px 9px}
+  .buscador{position:relative; flex:1; min-width:190px}
+  .buscador input{width:100%; padding-left:30px}
+  .buscador svg{position:absolute; left:9px; color:var(--muted)}
+
+  /* Tabla */
+  .tabla-wrap{background:var(--surface); border:1px solid var(--line); border-radius:10px; overflow:hidden}
+  table{width:100%; border-collapse:collapse}
+  th{font-size:12px; font-weight:600; color:var(--muted); text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); background:#fafbfc; white-space:nowrap}
+  td{padding:10px 12px; border-bottom:1px solid var(--line-soft); vertical-align:top}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:#fafbfc}
+  .num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; font-weight:600}
+  .num.entrada{color:var(--entra)} .num.salida{color:var(--sale)}
+  .fecha{white-space:nowrap; font-variant-numeric:tabular-nums}
+  .chip{display:inline-block; font-size:12px; padding:2px 8px; border-radius:20px; white-space:nowrap}
+  .chip.entrada{background:var(--entra-bg); color:var(--entra)}
+  .chip.salida{background:var(--sale-bg); color:var(--sale)}
+  .chip.pendiente{background:#fdf3e2; color:#8a5a08}
+  .secundario{color:var(--muted); font-size:13px}
+  .acciones{white-space:nowrap; text-align:right}
+  .vacio{padding:44px 16px; text-align:center; color:var(--muted)}
+  .vacio strong{display:block; color:var(--ink); font-weight:600; margin-bottom:4px}
+
+  /* Modal */
+  dialog{border:0; border-radius:12px; padding:0; width:min(560px,94vw); box-shadow:0 18px 50px rgba(20,32,45,.22)}
+  dialog::backdrop{background:rgba(20,32,45,.42)}
+  .modal-head{padding:16px 18px; border-bottom:1px solid var(--line)}
+  .modal-head h2{margin:0; font-size:17px; font-weight:650}
+  .modal-body{padding:16px 18px; display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .modal-body .full{grid-column:1/-1}
+  .modal-body .campo input,.modal-body .campo select,.modal-body .campo textarea{width:100%}
+  .seg{display:flex; border:1px solid var(--line); border-radius:7px; overflow:hidden}
+  .seg button{border:0; border-radius:0; flex:1; padding:9px; background:var(--surface); color:var(--muted)}
+  .seg button[aria-pressed="true"]{font-weight:600}
+  .seg button[data-tipo="entrada"][aria-pressed="true"]{background:var(--entra-bg); color:var(--entra)}
+  .seg button[data-tipo="salida"][aria-pressed="true"]{background:var(--sale-bg); color:var(--sale)}
+  .check{display:flex; align-items:center; gap:8px; font-size:14px}
+  .check input{width:auto}
+  .modal-foot{padding:13px 18px; border-top:1px solid var(--line); display:flex; gap:8px}
+  .modal-foot .der{display:flex; gap:8px; margin-left:auto}
+  .error{color:var(--sale); font-size:13px; padding:0 18px 4px}
+  .login-card .error{padding:0; margin-top:10px}
+
+  .aviso{background:#fdf3e2; border:1px solid #f0dcb5; color:#6b4708; padding:10px 13px; border-radius:8px; margin-bottom:14px; font-size:14px}
+  @media (max-width:760px){
+    .totales{grid-template-columns:1fr 1fr}
+    .modal-body{grid-template-columns:1fr}
+    .col-opt{display:none}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ Acceso ============ -->
+<div id="login" hidden>
+  <div class="login-card">
+    <h1>Control de Transferencias</h1>
+    <p>Entrá con tu usuario para ver los movimientos.</p>
+    <div class="campo"><label for="lEmail">Mail</label><input type="email" id="lEmail" autocomplete="username"></div>
+    <div class="campo"><label for="lPass">Contraseña</label><input type="password" id="lPass" autocomplete="current-password"></div>
+    <button id="btnEntrar" class="btn-primary">Entrar</button>
+    <div id="loginError" class="error" hidden></div>
+  </div>
+</div>
+
+<!-- ============ App ============ -->
+<div class="wrap" id="app" hidden>
+
+  <header class="top">
+    <div>
+      <h1>Transferencias</h1>
+      <p id="subtitulo">Entradas y salidas de plata</p>
+    </div>
+    <div class="top-actions">
+      <span class="secundario" id="usuario"></span>
+      <button id="btnSalir" class="btn-ghost btn-sm">Salir</button>
+      <button id="btnCsv" class="btn-ghost">Exportar CSV</button>
+      <button id="btnNueva" class="btn-primary">Nueva transferencia</button>
+    </div>
+  </header>
+
+  <div id="aviso" class="aviso" hidden></div>
+
+  <section class="totales">
+    <div class="tot"><div class="lbl">Entradas</div><div class="val pos" id="totEntradas">$0</div><div class="sub" id="cntEntradas">0 movimientos</div></div>
+    <div class="tot"><div class="lbl">Salidas</div><div class="val neg" id="totSalidas">$0</div><div class="sub" id="cntSalidas">0 movimientos</div></div>
+    <div class="tot"><div class="lbl">Saldo del período</div><div class="val" id="totSaldo">$0</div><div class="sub" id="subPeriodo">—</div></div>
+    <div class="tot"><div class="lbl">Sin factura asociada</div><div class="val" id="totSinFactura">$0</div><div class="sub" id="cntSinFactura">0 movimientos</div></div>
+  </section>
+
+  <section class="filtros">
+    <div class="campo"><label for="fDesde">Desde</label><input type="date" id="fDesde"></div>
+    <div class="campo"><label for="fHasta">Hasta</label><input type="date" id="fHasta"></div>
+    <div class="campo"><label for="fTipo">Tipo</label>
+      <select id="fTipo"><option value="">Todas</option><option value="entrada">Entradas</option><option value="salida">Salidas</option></select>
+    </div>
+    <div class="campo"><label for="fCuenta">Cuenta</label><select id="fCuenta"><option value="">Todas</option></select></div>
+    <div class="campo"><label for="fFactura">Factura</label>
+      <select id="fFactura"><option value="">Todas</option><option value="no">Sin factura</option><option value="si">Con factura</option></select>
+    </div>
+    <div class="campo buscador">
+      <label for="fBuscar">Buscar</label>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="bottom:10px"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="search" id="fBuscar" placeholder="Contraparte, concepto, comprobante…">
+    </div>
+    <button id="btnLimpiar" class="btn-ghost">Limpiar</button>
+  </section>
+
+  <div class="tabla-wrap">
+    <table>
+      <thead><tr>
+        <th>Fecha</th><th>Tipo</th><th>Contraparte</th><th>Concepto</th>
+        <th class="col-opt">Cuenta</th><th class="col-opt">Comprobante</th>
+        <th>Factura</th><th class="num">Monto</th><th></th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div id="vacio" class="vacio" hidden></div>
+  </div>
+</div>
+
+<dialog id="modal">
+  <div class="modal-head"><h2 id="modalTitulo">Nueva transferencia</h2></div>
+  <div class="modal-body">
+    <div class="campo full"><label>Tipo</label>
+      <div class="seg" id="segTipo">
+        <button type="button" data-tipo="entrada" aria-pressed="true">Entra plata</button>
+        <button type="button" data-tipo="salida" aria-pressed="false">Sale plata</button>
+      </div>
+    </div>
+    <div class="campo"><label for="mFecha">Fecha</label><input type="date" id="mFecha"></div>
+    <div class="campo"><label for="mMonto">Monto</label><input type="number" id="mMonto" step="0.01" min="0" placeholder="0,00"></div>
+    <div class="campo"><label for="mContraparte">Contraparte</label><input id="mContraparte" list="listaContrapartes" placeholder="Quién / a quién"><datalist id="listaContrapartes"></datalist></div>
+    <div class="campo"><label for="mCuenta">Cuenta</label><input id="mCuenta" list="listaCuentas" placeholder="Banco o cuenta"><datalist id="listaCuentas"></datalist></div>
+    <div class="campo full"><label for="mConcepto">Concepto</label><input id="mConcepto" placeholder="Por qué se hizo la transferencia"></div>
+    <div class="campo"><label for="mComprobante">N° de operación</label><input id="mComprobante" placeholder="Opcional"></div>
+    <div class="campo"><label for="mFacturaNro">N° de factura</label><input id="mFacturaNro" placeholder="Opcional"></div>
+    <div class="campo full check"><input type="checkbox" id="mFacturada"><label for="mFacturada">Ya está asociada a una factura</label></div>
+    <div class="campo full"><label for="mNotas">Notas</label><textarea id="mNotas" rows="2"></textarea></div>
+  </div>
+  <div id="modalError" class="error" hidden></div>
+  <div class="modal-foot">
+    <button type="button" id="btnBorrar" class="btn-danger" hidden>Eliminar</button>
+    <div class="der">
+      <button type="button" id="btnCancelar" class="btn-ghost">Cancelar</button>
+      <button type="button" id="btnGuardar" class="btn-primary">Guardar</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+// ============================================================
+// 1. Conexión al proyecto NUEVO de Supabase.
+//    Settings → API → Project URL y anon public key.
+// ============================================================
+const SUPABASE_URL = 'https://jscoitwpvfoknqyizchf.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_v3XzFZvwHdKzvZWykOlxhQ_0y2TrXsr';
+const TITULO = 'Entradas y salidas de plata';   // opcional: de quién es la cuenta
+
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = id => document.getElementById(id);
+
+// ============================================================
+// 2. Fechas en hora de Argentina (nunca toISOString directo)
+// ============================================================
+const TZ = 'America/Argentina/Buenos_Aires';
+const fmtISO = new Intl.DateTimeFormat('en-CA', {timeZone:TZ, year:'numeric', month:'2-digit', day:'2-digit'});
+const hoyAR = () => fmtISO.format(new Date());                   // 'AAAA-MM-DD'
+const primerDiaMesAR = () => hoyAR().slice(0,8) + '01';
+const verFecha = iso => iso ? iso.slice(8,10)+'/'+iso.slice(5,7)+'/'+iso.slice(0,4) : '';
+
+const plata = new Intl.NumberFormat('es-AR', {style:'currency', currency:'ARS', minimumFractionDigits:2});
+
+// ============================================================
+// 3. Acceso
+// ============================================================
+async function iniciarSesion(){
+  const email = $('lEmail').value.trim(), password = $('lPass').value;
+  if(!email || !password) return errorLogin('Completá mail y contraseña.');
+  const {error} = await db.auth.signInWithPassword({email, password});
+  if(error){
+    console.error('Login:', error);
+    const m = (error.message || '').toLowerCase();
+    if(m.includes('not confirmed'))
+      return errorLogin('El usuario existe pero tiene el mail sin confirmar. En Supabase → Authentication → Users, abrilo y confirmalo.');
+    if(m.includes('invalid login'))
+      return errorLogin('Ese mail y contraseña no coinciden con ningún usuario. Ojo: no es la contraseña de la base de datos, es la del usuario de Authentication → Users.');
+    return errorLogin('Supabase dice: ' + error.message);
+  }
+  $('lPass').value = '';
+}
+function errorLogin(msg){ const e = $('loginError'); e.textContent = msg; e.hidden = false; }
+
+db.auth.onAuthStateChange((_evento, sesion) => {
+  const dentro = !!sesion;
+  $('login').hidden = dentro;
+  $('app').hidden = !dentro;
+  if(dentro){
+    $('usuario').textContent = sesion.user.email;
+    $('subtitulo').textContent = TITULO;
+    cargar();
+  }
+});
+
+// ============================================================
+// 4. Mapeo snake_case (base) ↔ camelCase (app)
+// ============================================================
+const desdeDB = r => ({
+  id:r.id, fecha:r.fecha, tipo:r.tipo, monto:Number(r.monto), cuenta:r.cuenta,
+  contraparte:r.contraparte, concepto:r.concepto, comprobante:r.comprobante,
+  facturada:r.facturada, facturaNro:r.factura_nro, notas:r.notas
+});
+const haciaDB = t => ({
+  fecha:t.fecha, tipo:t.tipo, monto:t.monto, cuenta:t.cuenta,
+  contraparte:t.contraparte, concepto:t.concepto || null, comprobante:t.comprobante || null,
+  facturada:t.facturada, factura_nro:t.facturaNro || null, notas:t.notas || null
+});
+
+let datos = [];
+let editando = null;
+let tipoSel = 'entrada';
+
+// ============================================================
+// 5. Carga y render
+// ============================================================
+async function cargar(){
+  const {data, error} = await db.from('transferencias')
+    .select('*')
+    .gte('fecha', $('fDesde').value)
+    .lte('fecha', $('fHasta').value)
+    .order('fecha', {ascending:false})
+    .order('creado_en', {ascending:false});
+
+  if(error){ mostrarAviso('No se pudieron traer las transferencias: ' + error.message); return; }
+  ocultarAviso();
+  datos = data.map(desdeDB);
+  llenarSelectores();
+  render();
+}
+
+function filtradas(){
+  const tipo = $('fTipo').value, cuenta = $('fCuenta').value, fact = $('fFactura').value;
+  const q = $('fBuscar').value.trim().toLowerCase();
+  return datos.filter(t => {
+    if(tipo && t.tipo !== tipo) return false;
+    if(cuenta && t.cuenta !== cuenta) return false;
+    if(fact === 'no' && t.facturada) return false;
+    if(fact === 'si' && !t.facturada) return false;
+    if(q){
+      const texto = [t.contraparte, t.concepto, t.comprobante, t.facturaNro, t.notas].join(' ').toLowerCase();
+      if(!texto.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function render(){
+  const lista = filtradas();
+  const entradas = lista.filter(t => t.tipo === 'entrada');
+  const salidas  = lista.filter(t => t.tipo === 'salida');
+  const suma = arr => arr.reduce((a,t) => a + t.monto, 0);
+  const sinFact = lista.filter(t => !t.facturada);
+  const saldo = suma(entradas) - suma(salidas);
+  const cuenta = n => n + (n === 1 ? ' movimiento' : ' movimientos');
+
+  $('totEntradas').textContent = plata.format(suma(entradas));
+  $('cntEntradas').textContent = cuenta(entradas.length);
+  $('totSalidas').textContent = plata.format(suma(salidas));
+  $('cntSalidas').textContent = cuenta(salidas.length);
+  $('totSaldo').textContent = plata.format(saldo);
+  $('totSaldo').className = 'val ' + (saldo < 0 ? 'neg' : 'pos');
+  $('subPeriodo').textContent = verFecha($('fDesde').value) + ' al ' + verFecha($('fHasta').value);
+  $('totSinFactura').textContent = plata.format(suma(sinFact));
+  $('cntSinFactura').textContent = cuenta(sinFact.length);
+
+  const tbody = $('tbody');
+  tbody.innerHTML = '';
+  const vacio = $('vacio');
+
+  if(!lista.length){
+    vacio.hidden = false;
+    vacio.innerHTML = datos.length
+      ? '<strong>Ningún movimiento coincide con los filtros</strong>Probá ampliar el período o limpiar la búsqueda.'
+      : '<strong>Todavía no hay transferencias en este período</strong>Cargá la primera con el botón de arriba.';
+    return;
+  }
+  vacio.hidden = true;
+
+  for(const t of lista){
+    const tr = document.createElement('tr');
+    const signo = t.tipo === 'entrada' ? '+' : '−';
+    tr.innerHTML = `
+      <td class="fecha">${verFecha(t.fecha)}</td>
+      <td><span class="chip ${t.tipo}">${t.tipo === 'entrada' ? 'Entra' : 'Sale'}</span></td>
+      <td>${esc(t.contraparte)}</td>
+      <td class="secundario">${esc(t.concepto || '')}</td>
+      <td class="col-opt secundario">${esc(t.cuenta)}</td>
+      <td class="col-opt secundario">${esc(t.comprobante || '')}</td>
+      <td>${t.facturada
+            ? '<span class="secundario">' + esc(t.facturaNro || 'Sí') + '</span>'
+            : '<span class="chip pendiente">Pendiente</span>'}</td>
+      <td class="num ${t.tipo}">${signo} ${plata.format(t.monto)}</td>
+      <td class="acciones"><button class="btn-sm btn-ghost" data-editar="${t.id}">Editar</button></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function llenarSelectores(){
+  const cuentas = [...new Set(datos.map(t => t.cuenta).filter(Boolean))].sort();
+  const partes  = [...new Set(datos.map(t => t.contraparte).filter(Boolean))].sort();
+  const sel = $('fCuenta'), previo = sel.value;
+  sel.innerHTML = '<option value="">Todas</option>' + cuentas.map(c => `<option>${esc(c)}</option>`).join('');
+  sel.value = cuentas.includes(previo) ? previo : '';
+  $('listaCuentas').innerHTML = cuentas.map(c => `<option>${esc(c)}</option>`).join('');
+  $('listaContrapartes').innerHTML = partes.map(c => `<option>${esc(c)}</option>`).join('');
+}
+
+function mostrarAviso(msg){ const a = $('aviso'); a.textContent = msg; a.hidden = false; }
+function ocultarAviso(){ $('aviso').hidden = true; }
+
+// ============================================================
+// 6. Alta y edición
+// ============================================================
+function abrirModal(t){
+  editando = t ? t.id : null;
+  $('modalTitulo').textContent = t ? 'Editar transferencia' : 'Nueva transferencia';
+  setTipo(t ? t.tipo : 'entrada');
+  $('mFecha').value       = t ? t.fecha : hoyAR();
+  $('mMonto').value       = t ? t.monto : '';
+  $('mContraparte').value = t ? t.contraparte : '';
+  $('mCuenta').value      = t ? t.cuenta : '';
+  $('mConcepto').value    = t ? (t.concepto || '') : '';
+  $('mComprobante').value = t ? (t.comprobante || '') : '';
+  $('mFacturaNro').value  = t ? (t.facturaNro || '') : '';
+  $('mFacturada').checked = t ? t.facturada : false;
+  $('mNotas').value       = t ? (t.notas || '') : '';
+  $('btnBorrar').hidden   = !t;
+  $('modalError').hidden  = true;
+  $('modal').showModal();
+  $('mMonto').focus();
+}
+
+function setTipo(v){
+  tipoSel = v;
+  for(const b of $('segTipo').children) b.setAttribute('aria-pressed', String(b.dataset.tipo === v));
+}
+
+async function guardar(){
+  const t = {
+    fecha: $('mFecha').value,
+    tipo: tipoSel,
+    monto: parseFloat($('mMonto').value),
+    cuenta: $('mCuenta').value.trim(),
+    contraparte: $('mContraparte').value.trim(),
+    concepto: $('mConcepto').value.trim(),
+    comprobante: $('mComprobante').value.trim(),
+    facturaNro: $('mFacturaNro').value.trim(),
+    facturada: $('mFacturada').checked,
+    notas: $('mNotas').value.trim()
+  };
+  if(!t.fecha || !(t.monto > 0) || !t.contraparte || !t.cuenta){
+    return errorModal('Completá fecha, monto, contraparte y cuenta.');
+  }
+
+  const {error} = editando
+    ? await db.from('transferencias').update(haciaDB(t)).eq('id', editando)
+    : await db.from('transferencias').insert(haciaDB(t));
+
+  if(error) return errorModal('No se guardó: ' + error.message);
+
+  $('modal').close();
+  if(t.fecha < $('fDesde').value) $('fDesde').value = t.fecha;
+  if(t.fecha > $('fHasta').value) $('fHasta').value = t.fecha;
+  cargar();
+}
+
+async function borrar(){
+  if(!editando || !confirm('¿Eliminar esta transferencia?')) return;
+  const {error} = await db.from('transferencias').delete().eq('id', editando);
+  if(error) return errorModal('No se eliminó: ' + error.message);
+  $('modal').close();
+  cargar();
+}
+
+function errorModal(msg){ const e = $('modalError'); e.textContent = msg; e.hidden = false; }
+
+// ============================================================
+// 7. Exportar CSV (abre bien en Excel en es-AR)
+// ============================================================
+function exportarCsv(){
+  const lista = filtradas();
+  const cab = ['Fecha','Tipo','Contraparte','Concepto','Cuenta','Comprobante','Facturada','N° Factura','Monto','Notas'];
+  const filas = lista.map(t => [
+    verFecha(t.fecha), t.tipo === 'entrada' ? 'Entrada' : 'Salida', t.contraparte, t.concepto || '',
+    t.cuenta, t.comprobante || '', t.facturada ? 'Sí' : 'No', t.facturaNro || '',
+    String(t.monto).replace('.', ','), t.notas || ''
+  ]);
+  const csv = [cab, ...filas]
+    .map(f => f.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(';'))
+    .join('\r\n');
+  const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8'}));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `transferencias_${$('fDesde').value}_a_${$('fHasta').value}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================
+// 8. Eventos
+// ============================================================
+$('fDesde').value = primerDiaMesAR();
+$('fHasta').value = hoyAR();
+
+$('btnEntrar').addEventListener('click', iniciarSesion);
+$('lPass').addEventListener('keydown', e => { if(e.key === 'Enter') iniciarSesion(); });
+$('btnSalir').addEventListener('click', () => db.auth.signOut());
+
+['fDesde','fHasta'].forEach(id => $(id).addEventListener('change', cargar));
+['fTipo','fCuenta','fFactura'].forEach(id => $(id).addEventListener('change', render));
+$('fBuscar').addEventListener('input', render);
+$('btnLimpiar').addEventListener('click', () => {
+  $('fTipo').value = ''; $('fCuenta').value = ''; $('fFactura').value = ''; $('fBuscar').value = '';
+  $('fDesde').value = primerDiaMesAR(); $('fHasta').value = hoyAR();
+  cargar();
+});
+$('btnNueva').addEventListener('click', () => abrirModal(null));
+$('btnCsv').addEventListener('click', exportarCsv);
+$('btnCancelar').addEventListener('click', () => $('modal').close());
+$('btnGuardar').addEventListener('click', guardar);
+$('btnBorrar').addEventListener('click', borrar);
+$('segTipo').addEventListener('click', e => { if(e.target.dataset.tipo) setTipo(e.target.dataset.tipo); });
+$('tbody').addEventListener('click', e => {
+  const id = e.target.dataset?.editar;
+  if(id) abrirModal(datos.find(t => t.id === id));
+});
+document.addEventListener('keydown', e => {
+  if(e.key === 'Enter' && $('modal').open && e.target.tagName !== 'TEXTAREA') guardar();
+});
+
+// Mostrar la pantalla de acceso mientras se resuelve la sesión guardada
+db.auth.getSession().then(({data}) => { if(!data.session) $('login').hidden = false; });
+</script>
+</body>
+</html>
