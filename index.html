@@ -14,6 +14,7 @@
     --focus:#2f5bd0;
   }
   *{box-sizing:border-box}
+  [hidden]{display:none !important}
   body{
     margin:0; background:var(--page); color:var(--ink);
     font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -234,6 +235,7 @@ const plata = new Intl.NumberFormat('es-AR', {style:'currency', currency:'ARS', 
 // 3. Acceso
 // ============================================================
 async function iniciarSesion(){
+  $('loginError').hidden = true;
   const email = $('lEmail').value.trim(), password = $('lPass').value;
   if(!email || !password) return errorLogin('Completá mail y contraseña.');
   const {error} = await db.auth.signInWithPassword({email, password});
